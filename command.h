@@ -159,8 +159,10 @@ struct cmd {
     unsigned quit : 1;      /* quit request? */
     unsigned noforward : 1; /* not need forward (example: ping) */
 
-    int slot_num; /* this command should send to which slot?
-                   * -1:the keys in this command cross different slots*/
+    int slot_num;    /* this command should send to which slot?
+                      * -1:the keys in this command cross different slots*/
+    char *node_addr; /* Command sent to node address */
+
     struct cmd *
         *frag_seq; /* sequence of fragment command, map from keys to fragments*/
 
