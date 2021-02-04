@@ -46,7 +46,7 @@ void test_command_to_all_nodes(redisClusterContext *cc) {
 
 void test_transaction(redisClusterContext *cc) {
 
-    cluster_node *node = redisClusterKeyToNode(cc, "foo");
+    cluster_node *node = redisClusterGetNodeByKey(cc, "foo");
     assert(node);
 
     redisReply *reply;
@@ -127,7 +127,7 @@ void test_pipeline_transaction(redisClusterContext *cc) {
     int status;
     redisReply *reply;
 
-    cluster_node *node = redisClusterKeyToNode(cc, "foo");
+    cluster_node *node = redisClusterGetNodeByKey(cc, "foo");
     assert(node);
 
     status = redisClusterAppendCommandToNode(cc, node, "MULTI");

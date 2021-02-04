@@ -247,19 +247,13 @@ void redisClusterAsyncFree(redisClusterAsyncContext *acc);
 redisAsyncContext *actx_get_by_node(redisClusterAsyncContext *acc,
                                     cluster_node *node);
 
-/* Initiate an iterator for iterating over current cluster nodes */
+/* Cluster node iterator functions */
 void initNodeIterator(nodeIterator *iter, redisClusterContext *cc);
-
-/* Get next node from the iterator
- * The iterator will restart if the routing table is updated
- * before all nodes have been iterated. */
 cluster_node *nodeNext(nodeIterator *iter);
 
-/* Get hash slot for given key string, which can include hash tags */
-unsigned int redisClusterKeyToSlot(char *key);
-
-/* Get node that handles given key string, which can include hash tags */
-cluster_node *redisClusterKeyToNode(redisClusterContext *cc, char *key);
+/* Helper functions */
+unsigned int redisClusterGetSlotByKey(char *key);
+cluster_node *redisClusterGetNodeByKey(redisClusterContext *cc, char *key);
 
 #ifdef __cplusplus
 }

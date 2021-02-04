@@ -4163,8 +4163,8 @@ done:
 
 retry:
 
-    ret = redisAsyncFormattedCommand(ac_retry, redisClusterAsyncRetryCallback, cad,
-                                     command->cmd, command->clen);
+    ret = redisAsyncFormattedCommand(ac_retry, redisClusterAsyncRetryCallback,
+                                     cad, command->cmd, command->clen);
     if (ret != REDIS_OK) {
         goto error;
     }
@@ -4272,8 +4272,8 @@ int redisClusterAsyncFormattedCommand(redisClusterAsyncContext *acc,
     cad->callback = fn;
     cad->privdata = privdata;
 
-    status = redisAsyncFormattedCommand(ac, redisClusterAsyncRetryCallback, cad, cmd,
-                                        len);
+    status = redisAsyncFormattedCommand(ac, redisClusterAsyncRetryCallback, cad,
+                                        cmd, len);
     if (status != REDIS_OK) {
         goto error;
     }
@@ -4475,6 +4475,7 @@ void redisClusterAsyncFree(redisClusterAsyncContext *acc) {
     hi_free(acc);
 }
 
+/* Initiate an iterator for iterating over current cluster nodes */
 void initNodeIterator(nodeIterator *iter, redisClusterContext *cc) {
     iter->cc = cc;
     iter->route_version = cc->route_version;
@@ -4482,6 +4483,9 @@ void initNodeIterator(nodeIterator *iter, redisClusterContext *cc) {
     iter->retries_left = 1;
 }
 
+/* Get next node from the iterator
+ * The iterator will restart if the routing table is updated
+ * before all nodes have been iterated. */
 cluster_node *nodeNext(nodeIterator *iter) {
     if (iter->retries_left <= 0)
         return NULL;
@@ -4502,10 +4506,12 @@ cluster_node *nodeNext(nodeIterator *iter) {
         return NULL;
 }
 
-unsigned int redisClusterKeyToSlot(char *key) {
+/* Get hash slot for given key string, which can include hash tags */
+unsigned int redisClusterGetSlotByKey(char *key) {
     return keyHashSlot(key, strlen(key));
 }
 
-cluster_node *redisClusterKeyToNode(redisClusterContext *cc, char *key) {
+/* Get node that handles given key string, which can include hash tags */
+cluster_node *redisClusterGetNodeByKey(redisClusterContext *cc, char *key) {
     return node_get_by_table(cc, keyHashSlot(key, strlen(key)));
 }

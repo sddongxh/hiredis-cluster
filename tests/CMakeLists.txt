@@ -83,10 +83,10 @@ target_link_libraries(ct_out_of_memory_handling hiredis_cluster hiredis ${SSL_LI
 add_test(NAME ct_out_of_memory_handling COMMAND "$<TARGET_FILE:ct_out_of_memory_handling>")
 set_tests_properties(ct_out_of_memory_handling PROPERTIES LABELS "CT")
 
-add_executable(ct_usecases ct_usecases.c)
-target_link_libraries(ct_usecases hiredis_cluster hiredis ${SSL_LIBRARY} ${EVENT_LIBRARY})
-add_test(NAME ct_usecases COMMAND "$<TARGET_FILE:ct_usecases>")
-set_tests_properties(ct_usecases PROPERTIES LABELS "CT")
+add_executable(ct_specific_nodes ct_specific_nodes.c)
+target_link_libraries(ct_specific_nodes hiredis_cluster hiredis ${SSL_LIBRARY} ${EVENT_LIBRARY})
+add_test(NAME ct_specific_nodes COMMAND "$<TARGET_FILE:ct_specific_nodes>")
+set_tests_properties(ct_specific_nodes PROPERTIES LABELS "CT")
 
 if(ENABLE_SSL)
   # Executable: tls
