@@ -2,6 +2,7 @@
 #ifndef __HIRCLUSTER_H
 #define __HIRCLUSTER_H
 
+#include "dict.h"
 #include <hiredis/async.h>
 #include <hiredis/hiredis.h>
 
@@ -109,6 +110,13 @@ typedef struct redisClusterContext {
 
 } redisClusterContext;
 
+typedef struct nodeIterator {
+    redisClusterContext *cc;
+    uint64_t route_version;
+    int retries_left;
+    dictIterator di;
+} nodeIterator;
+
 /* Synchronous API */
 redisClusterContext *redisClusterConnect(const char *addrs, int flags);
 redisClusterContext *redisClusterConnectWithTimeout(const char *addrs,
@@ -148,6 +156,8 @@ void *redisClusterFormattedCommand(redisClusterContext *cc, char *cmd, int len);
 void *redisClustervCommand(redisClusterContext *cc, const char *format,
                            va_list ap);
 void *redisClusterCommand(redisClusterContext *cc, const char *format, ...);
+void *redisClusterCommandToNode(redisClusterContext *cc, cluster_node *node,
+                                const char *format, ...);
 void *redisClusterCommandArgv(redisClusterContext *cc, int argc,
                               const char **argv, const size_t *argvlen);
 
@@ -159,6 +169,8 @@ int redisClusterAppendFormattedCommand(redisClusterContext *cc, char *cmd,
 int redisClustervAppendCommand(redisClusterContext *cc, const char *format,
                                va_list ap);
 int redisClusterAppendCommand(redisClusterContext *cc, const char *format, ...);
+int redisClusterAppendCommandToNode(redisClusterContext *cc, cluster_node *node,
+                                    const char *format, ...);
 int redisClusterAppendCommandArgv(redisClusterContext *cc, int argc,
                                   const char **argv, const size_t *argvlen);
 int redisClusterGetReply(redisClusterContext *cc, void **reply);
@@ -221,6 +233,10 @@ int redisClustervAsyncCommand(redisClusterAsyncContext *acc,
 int redisClusterAsyncCommand(redisClusterAsyncContext *acc,
                              redisClusterCallbackFn *fn, void *privdata,
                              const char *format, ...);
+int redisClusterAsyncCommandToNode(redisClusterAsyncContext *acc,
+                                   cluster_node *node,
+                                   redisClusterCallbackFn *fn, void *privdata,
+                                   const char *format, ...);
 int redisClusterAsyncCommandArgv(redisClusterAsyncContext *acc,
                                  redisClusterCallbackFn *fn, void *privdata,
                                  int argc, const char **argv,
@@ -230,6 +246,20 @@ void redisClusterAsyncFree(redisClusterAsyncContext *acc);
 
 redisAsyncContext *actx_get_by_node(redisClusterAsyncContext *acc,
                                     cluster_node *node);
+
+/* Initiate an iterator for iterating over current cluster nodes */
+void initNodeIterator(nodeIterator *iter, redisClusterContext *cc);
+
+/* Get next node from the iterator
+ * The iterator will restart if the routing table is updated
+ * before all nodes have been iterated. */
+cluster_node *nodeNext(nodeIterator *iter);
+
+/* Get hash slot for given key string, which can include hash tags */
+unsigned int redisClusterKeyToSlot(char *key);
+
+/* Get node that handles given key string, which can include hash tags */
+cluster_node *redisClusterKeyToNode(redisClusterContext *cc, char *key);
 
 #ifdef __cplusplus
 }

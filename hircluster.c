@@ -1,11 +1,11 @@
 
+#include <assert.h>
 #include <ctype.h>
 #include <errno.h>
 #include <hiredis/alloc.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 
 #include "adlist.h"
 #include "command.h"
@@ -3174,6 +3174,39 @@ void *redisClusterCommand(redisClusterContext *cc, const char *format, ...) {
     return reply;
 }
 
+void *redisClusterCommandToNode(redisClusterContext *cc, cluster_node *node,
+                                const char *format, ...) {
+    redisContext *c;
+    va_list ap;
+    int ret;
+    redisReply *reply;
+
+    c = ctx_get_by_node(cc, node);
+    if (c == NULL) {
+        return NULL;
+    } else if (c->err) {
+        __redisClusterSetError(cc, c->err, c->errstr);
+        return NULL;
+    }
+
+    va_start(ap, format);
+    ret = redisvAppendCommand(c, format, ap);
+    va_end(ap);
+
+    if (ret != REDIS_OK) {
+        __redisClusterSetError(cc, c->err, c->errstr);
+        return NULL;
+    }
+
+    reply = __redisBlockForReply(c);
+    if (reply == NULL) {
+        __redisClusterSetError(cc, c->err, c->errstr);
+        return NULL;
+    }
+
+    return reply;
+}
+
 void *redisClusterCommandArgv(redisClusterContext *cc, int argc,
                               const char **argv, const size_t *argvlen) {
     redisReply *reply = NULL;
@@ -3328,6 +3361,89 @@ int redisClusterAppendCommand(redisClusterContext *cc, const char *format,
     va_end(ap);
 
     return ret;
+}
+
+/* Get the first slot served by a given node */
+static int __redisClusterGetServedSlot(cluster_node *node) {
+    cluster_slot *slot;
+    listNode *lnode;
+
+    if ((lnode = listFirst(node->slots)) != NULL) {
+        slot = listNodeValue(lnode);
+        return slot->start;
+    }
+    return -1;
+}
+
+int redisClusterAppendCommandToNode(redisClusterContext *cc, cluster_node *node,
+                                    const char *format, ...) {
+    redisContext *c;
+    va_list ap;
+    struct cmd *command = NULL;
+    char *cmd = NULL;
+    int len;
+    int slot;
+
+    if (cc->requests == NULL) {
+        cc->requests = listCreate();
+        if (cc->requests == NULL)
+            goto oom;
+
+        cc->requests->free = listCommandFree;
+    }
+
+    slot = __redisClusterGetServedSlot(node);
+    if (slot < 0) {
+        __redisClusterSetError(cc, REDIS_ERR_OTHER, "No slot served by node");
+        return REDIS_ERR;
+    }
+
+    c = ctx_get_by_node(cc, node);
+    if (c == NULL) {
+        return REDIS_ERR;
+    } else if (c->err) {
+        __redisClusterSetError(cc, c->err, c->errstr);
+        return REDIS_ERR;
+    }
+
+    /* Allocate cmd and encode the variadic command */
+    va_start(ap, format);
+    len = redisvFormatCommand(&cmd, format, ap);
+    va_end(ap);
+
+    if (len == -1) {
+        goto oom;
+    } else if (len == -2) {
+        __redisClusterSetError(cc, REDIS_ERR_OTHER, "Invalid format string");
+        return REDIS_ERR;
+    }
+
+    // Append the command to the outgoing hiredis buffer
+    if (redisAppendFormattedCommand(c, cmd, len) != REDIS_OK) {
+        __redisClusterSetError(cc, c->err, c->errstr);
+        hi_free(cmd);
+        return REDIS_ERR;
+    }
+
+    // Keep the command in the outstanding request list
+    command = command_get();
+    if (command == NULL) {
+        hi_free(cmd);
+        goto oom;
+    }
+    command->cmd = cmd;
+    command->clen = len;
+    command->slot_num = slot;
+
+    if (listAddNodeTail(cc->requests, command) == NULL)
+        goto oom;
+
+    return REDIS_OK;
+
+oom:
+    command_destroy(command);
+    __redisClusterSetError(cc, REDIS_ERR_OOM, "Out of memory");
+    return REDIS_ERR;
 }
 
 int redisClusterAppendCommandArgv(redisClusterContext *cc, int argc,
@@ -4185,6 +4301,84 @@ int redisClusterAsyncCommand(redisClusterAsyncContext *acc,
     return ret;
 }
 
+int redisClusterAsyncCommandToNode(redisClusterAsyncContext *acc,
+                                   cluster_node *node,
+                                   redisClusterCallbackFn *fn, void *privdata,
+                                   const char *format, ...) {
+    redisAsyncContext *ac;
+    int slot;
+    va_list ap;
+    int len;
+    int status;
+    cluster_async_data *cad = NULL;
+    char *cmd = NULL;
+    struct cmd *command = NULL;
+
+    slot = __redisClusterGetServedSlot(node);
+    if (slot < 0) {
+        __redisClusterAsyncSetError(acc, REDIS_ERR_OTHER,
+                                    "No slot served by node");
+        return REDIS_ERR;
+    }
+
+    ac = actx_get_by_node(acc, node);
+    if (ac == NULL) {
+        __redisClusterAsyncSetError(acc, REDIS_ERR_OTHER,
+                                    "actx get by node error");
+        return REDIS_ERR;
+    } else if (ac->err) {
+        __redisClusterAsyncSetError(acc, ac->err, ac->errstr);
+        return REDIS_ERR;
+    }
+
+    /* Allocate cmd and encode the variadic command */
+    va_start(ap, format);
+    len = redisvFormatCommand(&cmd, format, ap);
+    va_end(ap);
+
+    if (len == -1) {
+        goto oom;
+    } else if (len == -2) {
+        __redisClusterAsyncSetError(acc, REDIS_ERR_OTHER,
+                                    "Invalid format string");
+        return REDIS_ERR;
+    }
+
+    command = command_get();
+    if (command == NULL) {
+        hi_free(cmd);
+        goto oom;
+    }
+
+    command->cmd = cmd;
+    command->clen = len;
+    command->slot_num = slot;
+
+    cad = cluster_async_data_get();
+    if (cad == NULL)
+        goto oom;
+
+    cad->acc = acc;
+    cad->command = command;
+    cad->callback = fn;
+    cad->privdata = privdata;
+
+    status = redisAsyncFormattedCommand(ac, redisClusterAsyncCallback, cad, cmd,
+                                        len);
+    if (status != REDIS_OK)
+        goto error;
+
+    return REDIS_OK;
+
+oom:
+    __redisClusterAsyncSetError(acc, REDIS_ERR_OTHER, "Out of memory");
+    // passthrough
+
+error:
+    command_destroy(command);
+    return REDIS_ERR;
+}
+
 int redisClusterAsyncCommandArgv(redisClusterAsyncContext *acc,
                                  redisClusterCallbackFn *fn, void *privdata,
                                  int argc, const char **argv,
@@ -4252,4 +4446,39 @@ void redisClusterAsyncFree(redisClusterAsyncContext *acc) {
     redisClusterFree(cc);
 
     hi_free(acc);
+}
+
+void initNodeIterator(nodeIterator *iter, redisClusterContext *cc) {
+    iter->cc = cc;
+    iter->route_version = cc->route_version;
+    dictInitIterator(&iter->di, cc->nodes);
+    iter->retries_left = 1;
+}
+
+cluster_node *nodeNext(nodeIterator *iter) {
+    if (iter->retries_left <= 0)
+        return NULL;
+
+    if (iter->route_version != iter->cc->route_version) {
+        // The routing table has changed and current iterator
+        // is invalid. The nodes dict has been recreated in
+        // the cluster context. We need to re-init the dictIter.
+        dictInitIterator(&iter->di, iter->cc->nodes);
+        iter->route_version = iter->cc->route_version;
+        iter->retries_left--;
+    }
+
+    dictEntry *de;
+    if ((de = dictNext(&iter->di)) != NULL)
+        return dictGetEntryVal(de);
+    else
+        return NULL;
+}
+
+unsigned int redisClusterKeyToSlot(char *key) {
+    return keyHashSlot(key, strlen(key));
+}
+
+cluster_node *redisClusterKeyToNode(redisClusterContext *cc, char *key) {
+    return node_get_by_table(cc, keyHashSlot(key, strlen(key)));
 }
