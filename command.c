@@ -60,6 +60,8 @@ static int redis_arg0(struct cmd *r) {
     case CMD_REQ_REDIS_ZCARD:
     case CMD_REQ_REDIS_PFCOUNT:
     case CMD_REQ_REDIS_AUTH:
+    
+    case CMD_REQ_REDIS_SUBSCRIBE:
         return 1;
 
     default:
@@ -101,6 +103,8 @@ static int redis_arg1(struct cmd *r) {
     case CMD_REQ_REDIS_ZRANK:
     case CMD_REQ_REDIS_ZREVRANK:
     case CMD_REQ_REDIS_ZSCORE:
+
+    case CMD_REQ_REDIS_PUBLISH:
         return 1;
 
     default:
@@ -197,6 +201,8 @@ static int redis_argn(struct cmd *r) {
 
     case CMD_REQ_REDIS_PFADD:
     case CMD_REQ_REDIS_PFMERGE:
+    case CMD_REQ_REDIS_PUBLISH:
+    case CMD_REQ_REDIS_SUBSCRIBE:
 
     case CMD_REQ_REDIS_ZADD:
     case CMD_REQ_REDIS_ZINTERSTORE:
@@ -208,6 +214,8 @@ static int redis_argn(struct cmd *r) {
     case CMD_REQ_REDIS_ZREVRANGEBYSCORE:
     case CMD_REQ_REDIS_ZUNIONSTORE:
     case CMD_REQ_REDIS_ZSCAN:
+    
+    case CMD_REQ_REDIS_SCRIPT:
         return 1;
 
     default:
@@ -348,6 +356,7 @@ static inline cmd_type_t redis_parse_cmd_verb(const char *m, int len) {
                !strncasecmp(m, "zcount", 6) ? CMD_REQ_REDIS_ZCOUNT :
                !strncasecmp(m, "zrange", 6) ? CMD_REQ_REDIS_ZRANGE :
                !strncasecmp(m, "zscore", 6) ? CMD_REQ_REDIS_ZSCORE :
+               !strncasecmp(m, "script", 6) ? CMD_REQ_REDIS_SCRIPT :
                                               CMD_UNKNOWN;
     case 7:
         return !strncasecmp(m, "persist", 7) ? CMD_REQ_REDIS_PERSIST :
@@ -361,6 +370,7 @@ static inline cmd_type_t redis_parse_cmd_verb(const char *m, int len) {
                !strncasecmp(m, "restore", 7) ? CMD_REQ_REDIS_RESTORE :
                !strncasecmp(m, "pfcount", 7) ? CMD_REQ_REDIS_PFCOUNT :
                !strncasecmp(m, "pfmerge", 7) ? CMD_REQ_REDIS_PFMERGE :
+               !strncasecmp(m, "publish", 7) ? CMD_REQ_REDIS_PUBLISH :
                                                CMD_UNKNOWN;
     case 8:
         return !strncasecmp(m, "expireat", 8) ? CMD_REQ_REDIS_EXPIREAT :
@@ -376,6 +386,7 @@ static inline cmd_type_t redis_parse_cmd_verb(const char *m, int len) {
                !strncasecmp(m, "sismember", 9) ? CMD_REQ_REDIS_SISMEMBER :
                !strncasecmp(m, "zrevrange", 9) ? CMD_REQ_REDIS_ZREVRANGE :
                !strncasecmp(m, "zlexcount", 9) ? CMD_REQ_REDIS_ZLEXCOUNT :
+               !strncasecmp(m, "subscribe", 9) ? CMD_REQ_REDIS_SUBSCRIBE :
                                                  CMD_UNKNOWN;
     case 10:
         return !strncasecmp(m, "sdiffstore", 10) ? CMD_REQ_REDIS_SDIFFSTORE :

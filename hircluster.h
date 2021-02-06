@@ -162,6 +162,8 @@ int redisClusterAppendCommand(redisClusterContext *cc, const char *format, ...);
 int redisClusterAppendCommandArgv(redisClusterContext *cc, int argc,
                                   const char **argv, const size_t *argvlen);
 int redisClusterGetReply(redisClusterContext *cc, void **reply);
+int redisClusterGetReply2(redisClusterContext *cc, void **reply);
+void redisClusterResetErrors(redisClusterContext *cc); 
 void redisClusterReset(redisClusterContext *cc);
 
 int cluster_update_route(redisClusterContext *cc);

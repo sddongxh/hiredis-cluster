@@ -1976,14 +1976,12 @@ int redisClusterSetOptionTimeout(redisClusterContext *cc,
             __redisClusterSetError(cc, REDIS_ERR_OOM, "Out of memory");
             return REDIS_ERR;
         }
-        memcpy(cc->command_timeout, &tv, sizeof(struct timeval));
-        return REDIS_OK;
+        cc->command_timeout->tv_sec = 0; 
+        cc->command_timeout->tv_usec = 0; 
     }
-
     if (cc->command_timeout->tv_sec != tv.tv_sec ||
         cc->command_timeout->tv_usec != tv.tv_usec) {
         memcpy(cc->command_timeout, &tv, sizeof(struct timeval));
-
         if (cc->nodes && dictSize(cc->nodes) > 0) {
             dictEntry *de;
             cluster_node *node;
@@ -2304,7 +2302,6 @@ static int __redisClusterGetReply(redisClusterContext *cc, int slot_num,
                                   void **reply) {
     cluster_node *node;
     redisContext *c;
-
     if (cc == NULL || slot_num < 0 || reply == NULL) {
         return REDIS_ERR;
     }
@@ -2333,6 +2330,8 @@ static int __redisClusterGetReply(redisClusterContext *cc, int slot_num,
 
     if (redisGetReply(c, reply) != REDIS_OK) {
         __redisClusterSetError(cc, c->err, c->errstr);
+        // c->err = 0;
+        // c->errstr[0] = '\0';
         return REDIS_ERR;
     }
 
@@ -3460,7 +3459,7 @@ int redisClusterGetReply(redisClusterContext *cc, void **reply) {
 
     slot_num = command->slot_num;
     if (slot_num >= 0) {
-        listDelNode(cc->requests, list_command);
+//        listDelNode(cc->requests, list_command);
         return __redisClusterGetReply(cc, slot_num, reply);
     }
 
@@ -3511,6 +3510,25 @@ error:
     return REDIS_ERR;
 }
 
+void redisClusterResetErrors(redisClusterContext *cc) {
+    if (cc->nodes && dictSize(cc->nodes) > 0) {
+        dictEntry *de;
+        cluster_node *node;
+        dictIterator di;
+        dictInitIterator(&di, cc->nodes);
+        while ((de = dictNext(&di)) != NULL) {
+            node = dictGetEntryVal(de);
+            if (node->con) {
+                // node->con->errstr[0] = '\0';
+                memset(node->con->errstr, '\0', strlen(node->con->errstr));
+                node->con->err = 0; 
+            }
+        }
+    }
+    // cc->errstr[0] = '\0';
+    memset(cc->errstr, '\0', strlen(cc->errstr));
+    cc->err = 0; 
+}
 void redisClusterReset(redisClusterContext *cc) {
     int status;
     void *reply;
